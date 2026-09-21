@@ -1,0 +1,6 @@
+{
+  "name": "VeoStudio Lyric Video Director",
+  "description": "AI-powered lyric video creator with cinematic captions, worship and modern typography styles, character performance sync, Google Veo 3 video studio, and YouTube/TikTok Repurpose Hub.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

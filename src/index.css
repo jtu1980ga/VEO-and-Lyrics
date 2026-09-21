@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@layer utilities {
+  .font-cinzel {
+    font-family: 'Cinzel', Georgia, serif;
+  }
+  .font-playfair {
+    font-family: 'Playfair Display', Georgia, serif;
+  }
+  .font-montserrat {
+    font-family: 'Montserrat', system-ui, sans-serif;
+  }
+  .font-jakarta {
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  }
+}
+
