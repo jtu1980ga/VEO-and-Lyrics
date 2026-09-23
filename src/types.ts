@@ -1,4 +1,5 @@
 export type CaptionStyle = 
+  | 'seven_clouds'        // Signature 7 Clouds style: Bold clean centered rounded-pill typography, black outline & drop shadow, subtle glowing active word
   | 'golden_worship'      // Ethereal golden luminous typography matching modern worship videos
   | 'how_to_save_a_life'  // Clean warm center typography with soft dark vignette & subtle floating particles
   | 'celestial_kinetic'   // Dynamic word-by-word bloom & kinetic scaling
@@ -86,6 +87,15 @@ export interface VideoSettings {
   showIntroScreen?: boolean;
   showOutroScreen?: boolean;
   cta: CallToActionSettings;
+  videoClips?: VideoClipItem[];
+}
+
+export interface VideoClipItem {
+  id: string;
+  url: string;
+  previewUrl?: string;
+  title?: string;
+  durationSec?: number;
 }
 
 export interface PexelsMediaItem {

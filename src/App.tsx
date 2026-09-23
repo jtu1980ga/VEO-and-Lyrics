@@ -7,13 +7,16 @@ import { VeoVideoStudio } from './components/VeoVideoStudio';
 import { RepurposeHubView } from './components/RepurposeHubView';
 import { ChordLyricStudioPipeline } from './components/ChordLyricStudioPipeline';
 import { AccountSettingsModal } from './components/AccountSettingsModal';
+import { SocialKeywordsHub } from './components/SocialKeywordsHub';
+import { GeminiAssistantChat } from './components/GeminiAssistantChat';
 import { TimedLyricLine, VideoSettings } from './types';
 import { SONG_PRESETS } from './data/presets';
 import { loadSavedCreatorProfile, CreatorProfile, JAMES_USSERY_PROFILE } from './data/creatorProfile';
 
 export default function App() {
-  const [view, setView] = useState<'landing' | 'build_song' | 'build_character' | 'chord_pipeline' | 'studio' | 'veo_studio' | 'repurpose_hub'>('landing');
+  const [view, setView] = useState<'landing' | 'build_song' | 'build_character' | 'chord_pipeline' | 'studio' | 'veo_studio' | 'repurpose_hub' | 'social_keywords'>('landing');
   const [isAccountModalOpen, setIsAccountModalOpen] = useState<boolean>(false);
+  const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
   const [creatorProfile, setCreatorProfile] = useState<CreatorProfile>(JAMES_USSERY_PROFILE);
 
   useEffect(() => {
@@ -261,6 +264,7 @@ export default function App() {
         onNewCreation={() => setView('landing')}
         onSelectView={(v) => setView(v)}
         onOpenAccountSettings={() => setIsAccountModalOpen(true)}
+        onToggleChat={() => setIsChatOpen((prev) => !prev)}
         creatorName={creatorProfile.name}
       />
 
@@ -270,13 +274,23 @@ export default function App() {
         onProfileUpdated={(newProfile) => setCreatorProfile(newProfile)}
       />
 
+      <GeminiAssistantChat
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+      />
+
       <main className="flex-1 flex flex-col justify-start">
+        {view === 'social_keywords' && (
+          <SocialKeywordsHub />
+        )}
+
         {view === 'landing' && (
           <LandingView
             onSelectMode={(mode) => setView(mode === 'character' ? 'build_character' : 'build_song')}
             onQuickDemo={handleQuickDemo}
             onSelectRepurpose={() => setView('repurpose_hub')}
             onSelectChordPipeline={() => setView('chord_pipeline')}
+            onSelectSocialKeywords={() => setView('social_keywords')}
           />
         )}
 

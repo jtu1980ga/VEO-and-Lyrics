@@ -112,9 +112,23 @@ export const StudioPlayerView: React.FC<StudioPlayerViewProps> = ({
     setIsSendingChat(true);
 
     try {
+      const savedKeys = localStorage.getItem('veostudio_api_keys');
+      let customGeminiKey = '';
+      if (savedKeys) {
+        try {
+          const parsed = JSON.parse(savedKeys);
+          customGeminiKey = parsed.geminiApiKey || '';
+        } catch (e) {}
+      }
+
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (customGeminiKey) {
+        headers['x-gemini-api-key'] = customGeminiKey;
+      }
+
       const res = await fetch('/api/studio/ai-director-chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           userMessage: text,
           currentSettings: settings,
@@ -138,21 +152,45 @@ export const StudioPlayerView: React.FC<StudioPlayerViewProps> = ({
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           },
         ]);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setAiChatMessages((prev) => [
+          ...prev,
+          {
+            sender: 'director',
+            text: errData.error || "I noticed an issue reaching Gemini. Please verify your GEMINI_API_KEY in Account Settings or try again.",
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          },
+        ]);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Studio AI Chat error:', err);
+      setAiChatMessages((prev) => [
+        ...prev,
+        {
+          sender: 'director',
+          text: "Network or server connection error. Your local preview remains active.",
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        },
+      ]);
     } finally {
       setIsSendingChat(false);
     }
   };
 
-  // Total duration calculation from lines
+  // Total duration calculation from lines, settings, and outro duration
   useEffect(() => {
+    if (settings.videoDurationMode === 'custom' && settings.customDurationSec) {
+      setTotalDuration(settings.customDurationSec);
+      return;
+    }
+
     if (lyricsLines.length > 0) {
       const lastLine = lyricsLines[lyricsLines.length - 1];
-      setTotalDuration(Math.max(20, Math.ceil(lastLine.end + 2)));
+      const outroPortion = settings.showOutroScreen ? (settings.outroDurationSec || 10) : 2;
+      setTotalDuration(Math.max(20, Math.ceil(lastLine.end + outroPortion)));
     }
-  }, [lyricsLines]);
+  }, [lyricsLines, settings.videoDurationMode, settings.customDurationSec, settings.showOutroScreen, settings.outroDurationSec]);
 
   // Initialize AudioEngine
   useEffect(() => {
@@ -161,14 +199,17 @@ export const StudioPlayerView: React.FC<StudioPlayerViewProps> = ({
 
     if (audioFile) {
       audio.loadCustomAudio(audioFile).then((dur) => {
-        setTotalDuration(Math.ceil(dur));
+        if (settings.videoDurationMode !== 'custom') {
+          const outroPortion = settings.showOutroScreen ? (settings.outroDurationSec || 10) : 0;
+          setTotalDuration(Math.ceil(dur) + outroPortion);
+        }
       });
     }
 
     return () => {
       audio.stop();
     };
-  }, [audioFile]);
+  }, [audioFile, settings.videoDurationMode, settings.showOutroScreen, settings.outroDurationSec]);
 
   // Initialize Canvas Renderer
   useEffect(() => {
@@ -192,6 +233,10 @@ export const StudioPlayerView: React.FC<StudioPlayerViewProps> = ({
     if (characterPhotoUrl) renderer.setUserAvatar(characterPhotoUrl);
     if (bgImageUrl) renderer.setUserBackground(bgImageUrl);
     rendererRef.current = renderer;
+
+    return () => {
+      renderer.destroy();
+    };
   }, [settings.aspectRatio, characterPhotoUrl, bgImageUrl]);
 
   // Animation Frame Loop
@@ -786,6 +831,7 @@ export const StudioPlayerView: React.FC<StudioPlayerViewProps> = ({
                   onChange={(e) => onUpdateSettings({ captionStyle: e.target.value as CaptionStyle })}
                   className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2 text-gray-200"
                 >
+                  <option value="seven_clouds">☁️ 7 Clouds Style (Bold Modern Pill, Drop Shadow & Highlight)</option>
                   <option value="how_to_save_a_life">🎹 How to Save a Life (Warm Clean Centered + Chords)</option>
                   <option value="golden_worship">⭐ Golden Worship (Video Style)</option>
                   <option value="celestial_kinetic">✨ Celestial Kinetic Bloom</option>

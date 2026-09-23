@@ -7,6 +7,7 @@ interface LandingViewProps {
   onQuickDemo: (presetId: string) => void;
   onSelectRepurpose?: () => void;
   onSelectChordPipeline?: () => void;
+  onSelectSocialKeywords?: () => void;
 }
 
 export const LandingView: React.FC<LandingViewProps> = ({
@@ -14,6 +15,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
   onQuickDemo,
   onSelectRepurpose,
   onSelectChordPipeline,
+  onSelectSocialKeywords,
 }) => {
   const worshipPreset = SONG_PRESETS[0]; // "You Found Me in the Silence"
 
@@ -160,7 +162,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
       {onSelectRepurpose && (
         <div
           onClick={onSelectRepurpose}
-          className="mb-8 p-5 sm:p-6 rounded-2xl bg-gradient-to-r from-rose-950/40 via-gray-900 to-amber-950/40 border border-rose-500/30 hover:border-rose-500/70 cursor-pointer transition shadow-lg hover:shadow-rose-500/10 flex flex-col sm:flex-row items-center justify-between gap-4"
+          className="mb-4 p-5 sm:p-6 rounded-2xl bg-gradient-to-r from-rose-950/40 via-gray-900 to-amber-950/40 border border-rose-500/30 hover:border-rose-500/70 cursor-pointer transition shadow-lg hover:shadow-rose-500/10 flex flex-col sm:flex-row items-center justify-between gap-4"
         >
           <div className="space-y-1 text-center sm:text-left">
             <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 text-[11px] font-extrabold uppercase tracking-wider border border-rose-500/30">
@@ -188,8 +190,67 @@ export const LandingView: React.FC<LandingViewProps> = ({
         </div>
       )}
 
+      {/* Social Media Keywords & SEO Banner */}
+      {onSelectSocialKeywords && (
+        <div
+          onClick={onSelectSocialKeywords}
+          className="mb-8 p-5 sm:p-6 rounded-2xl bg-gradient-to-r from-amber-950/40 via-gray-900 to-purple-950/40 border border-amber-500/30 hover:border-amber-500/70 cursor-pointer transition shadow-lg hover:shadow-amber-500/10 flex flex-col sm:flex-row items-center justify-between gap-4"
+        >
+          <div className="space-y-1 text-center sm:text-left">
+            <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[11px] font-extrabold uppercase tracking-wider border border-amber-500/30">
+              <Sparkles className="w-3 h-3 text-amber-400" />
+              <span>Multi-Platform Growth • TikTok, Instagram, Facebook, YouTube</span>
+            </div>
+            <h3 className="text-lg font-black text-white">
+              Keywords, SEO Tags & YouTube Description Hub
+            </h3>
+            <p className="text-xs text-gray-400 max-w-xl">
+              Access your saved artist info, copy James Ussery's official YouTube video description with Romans 10:9 Salvation Prayer, 8 streaming platforms, and generate instant viral keywords for TikTok, Instagram Reels, and Facebook.
+            </p>
+          </div>
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectSocialKeywords();
+            }}
+            className="whitespace-nowrap px-6 py-3 bg-gradient-to-r from-amber-500 to-pink-500 hover:from-amber-400 hover:to-pink-400 text-gray-950 font-black text-xs sm:text-sm rounded-xl transition shadow-lg shadow-amber-500/20 flex items-center gap-2 cursor-pointer"
+          >
+            <span>Open Keywords & SEO Hub</span>
+            <span>→</span>
+          </button>
+        </div>
+      )}
+
       {/* Highlighted Preset Banner: Reference Style Videos */}
       <div className="space-y-3">
+        {/* Style: Pearls (James Ussery) - 7 Clouds Style Typography */}
+        <div className="bg-gradient-to-r from-amber-950/60 via-gray-900 to-indigo-950/60 border-2 border-amber-500/60 rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl shadow-amber-500/10">
+          <div className="space-y-1.5 text-center sm:text-left">
+            <div className="inline-flex items-center gap-1.5 text-amber-300 text-xs font-bold uppercase tracking-wider">
+              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+              <span>Signature Style • 7 Clouds Clean Bold Typography ("Pearls" — James Ussery)</span>
+            </div>
+            <h4 className="font-extrabold text-xl text-white font-sans flex items-center gap-2 justify-center sm:justify-start">
+              <span>"Pearls"</span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono font-normal border border-amber-500/30">
+                7 Clouds Look
+              </span>
+            </h4>
+            <p className="text-xs text-gray-300 max-w-xl italic">
+              "Looking in the mirror through the tear-stained glass... God was shaping pearls behind the shadow of the wall. Every battle had a purpose, every scar a design..."
+            </p>
+          </div>
+
+          <button
+            onClick={() => onQuickDemo('pearls_james_ussery')}
+            className="whitespace-nowrap px-6 py-3.5 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-gray-950 font-black text-xs sm:text-sm rounded-xl transition shadow-lg shadow-amber-500/30 flex items-center gap-2 cursor-pointer"
+          >
+            <Play className="w-4 h-4 fill-current" />
+            <span>Launch "Pearls" (7 Clouds Style)</span>
+          </button>
+        </div>
+
         <div className="bg-gradient-to-r from-amber-950/50 via-gray-900 to-amber-950/50 border border-amber-500/40 rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="space-y-1.5 text-center sm:text-left">
             <div className="inline-flex items-center gap-1.5 text-amber-400 text-xs font-bold uppercase tracking-wider">
@@ -197,7 +258,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
               <span>Reference Style 1 • Golden Worship Glow ("You Found Me in the Silence")</span>
             </div>
             <h4 className="font-bold text-lg text-white font-cinzel">
-              "{worshipPreset.title}"
+              "You Found Me in the Silence"
             </h4>
             <p className="text-xs text-gray-400 max-w-xl italic">
               "You found me in the silence, When the world was loud and blind. You reached into my darkness, And gave me peace I couldn’t find..."

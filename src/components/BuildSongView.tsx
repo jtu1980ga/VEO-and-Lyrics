@@ -356,6 +356,7 @@ export const BuildSongView: React.FC<BuildSongViewProps> = ({
               onChange={(e) => setCaptionStyle(e.target.value as CaptionStyle)}
               className="w-full bg-gray-950 border border-gray-800 rounded-xl p-2.5 text-xs text-gray-200 focus:outline-none focus:border-amber-500 cursor-pointer"
             >
+              <option value="seven_clouds">☁️ 7 Clouds Style (Bold Modern Pill, Drop Shadow & Highlight)</option>
               <option value="how_to_save_a_life">🎹 How to Save a Life (Warm Clean Centered + Chords)</option>
               <option value="golden_worship">⭐ Golden Worship Radiance (Reference Style)</option>
               <option value="celestial_kinetic">✨ Celestial Kinetic Bloom</option>

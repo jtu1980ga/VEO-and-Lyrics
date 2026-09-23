@@ -1,11 +1,13 @@
 import React from 'react';
-import { Sparkles, PlusCircle, Film, Music, ShieldCheck, User, Key } from 'lucide-react';
+import { Sparkles, PlusCircle, Film, Music, ShieldCheck, User, Key, Hash, LogIn, LogOut, Bot } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 interface HeaderProps {
   onNewCreation: () => void;
   activeView: string;
-  onSelectView?: (view: 'landing' | 'build_song' | 'chord_pipeline' | 'studio' | 'veo_studio' | 'repurpose_hub') => void;
+  onSelectView?: (view: 'landing' | 'build_song' | 'chord_pipeline' | 'studio' | 'veo_studio' | 'repurpose_hub' | 'social_keywords') => void;
   onOpenAccountSettings?: () => void;
+  onToggleChat?: () => void;
   creatorName?: string;
 }
 
@@ -14,8 +16,10 @@ export const Header: React.FC<HeaderProps> = ({
   activeView,
   onSelectView,
   onOpenAccountSettings,
+  onToggleChat,
   creatorName = 'James Ussery',
 }) => {
+  const { user, signInWithGoogle, signOut, loading } = useAuth();
   return (
     <header className="border-b border-gray-800/80 bg-gray-950/80 backdrop-blur-md px-4 sm:px-6 py-3.5 sticky top-0 z-40">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -92,9 +96,62 @@ export const Header: React.FC<HeaderProps> = ({
               YouTube/TikTok
             </span>
           </button>
+
+          <button
+            onClick={() => onSelectView && onSelectView('social_keywords')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+              activeView === 'social_keywords'
+                ? 'bg-gradient-to-r from-amber-500 to-pink-500 text-gray-950 font-black shadow-md'
+                : 'text-amber-400 hover:text-white bg-amber-500/10'
+            }`}
+          >
+            <Hash className="w-3.5 h-3.5" />
+            <span>Social Keywords & SEO</span>
+          </button>
         </div>
 
         <div className="flex items-center space-x-2.5">
+          {/* AI Creative Director Chat Button */}
+          {onToggleChat && (
+            <button
+              onClick={onToggleChat}
+              className="flex items-center space-x-1.5 text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 px-3 py-2 rounded-xl border border-amber-500/40 transition shadow-sm cursor-pointer"
+              title="Open Gemini AI Creative Director Chat"
+            >
+              <Bot className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Ask AI Director</span>
+            </button>
+          )}
+
+          {/* Google Sign-In with Firebase Auth */}
+          {user ? (
+            <div className="flex items-center gap-2 bg-gray-900 border border-gray-800 px-2.5 py-1.5 rounded-xl">
+              {user.photoURL ? (
+                <img src={user.photoURL} alt="Profile" className="w-6 h-6 rounded-full border border-amber-500/40" />
+              ) : (
+                <User className="w-4 h-4 text-emerald-400" />
+              )}
+              <span className="text-xs font-medium text-gray-300 hidden md:inline max-w-[100px] truncate">
+                {user.displayName || user.email?.split('@')[0]}
+              </span>
+              <button
+                onClick={signOut}
+                title="Sign out of Google"
+                className="text-gray-400 hover:text-rose-400 text-xs p-1 cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={signInWithGoogle}
+              className="flex items-center space-x-1.5 text-xs font-bold bg-white text-gray-950 hover:bg-gray-100 px-3 py-2 rounded-xl shadow-md transition cursor-pointer"
+            >
+              <LogIn className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Login with Google</span>
+            </button>
+          )}
+
           {/* Creator Account & BYOK Keys Button */}
           {onOpenAccountSettings && (
             <button

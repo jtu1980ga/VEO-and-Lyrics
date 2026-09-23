@@ -16,6 +16,7 @@ import {
   EyeOff,
   Flame,
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import {
   CreatorProfile,
   JAMES_USSERY_PROFILE,
@@ -37,6 +38,7 @@ export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({
   onClose,
   onProfileUpdated,
 }) => {
+  const { user, signInWithGoogle, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState<'profile' | 'api_keys' | 'membership'>('profile');
 
   // Creator Profile State
@@ -172,6 +174,50 @@ export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({
           {/* TAB 1: PROFILE & STREAMING LINKS */}
           {activeTab === 'profile' && (
             <div className="space-y-5">
+              {/* Google Sign-in Card */}
+              <div className="bg-gray-900/90 border border-gray-800 rounded-xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  {user?.photoURL ? (
+                    <img src={user.photoURL} alt="Profile" className="w-10 h-10 rounded-full border border-amber-500/50" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center font-bold">
+                      G
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-xs font-bold text-white flex items-center gap-2">
+                      <span>{user ? user.displayName || user.email : 'Google Account Not Connected'}</span>
+                      {user && (
+                        <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.2 rounded font-mono">
+                          LOGGED IN
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-[11px] text-gray-400 block">
+                      {user ? `Connected as ${user.email} (Syncs your keywords & lyric videos to Firestore)` : 'Sign in with Google to sync all your projects, keywords, and history across devices.'}
+                    </span>
+                  </div>
+                </div>
+
+                {user ? (
+                  <button
+                    type="button"
+                    onClick={signOut}
+                    className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-xs font-bold border border-gray-700 transition cursor-pointer"
+                  >
+                    Sign Out
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={signInWithGoogle}
+                    className="px-3.5 py-2 rounded-xl bg-white hover:bg-gray-100 text-gray-950 text-xs font-bold shadow-md transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>Login with Google</span>
+                  </button>
+                )}
+              </div>
+
               {/* Account Status Badge */}
               <div className="bg-gradient-to-r from-amber-500/15 via-rose-500/10 to-gray-950 border border-amber-500/30 rounded-xl p-3.5 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5">

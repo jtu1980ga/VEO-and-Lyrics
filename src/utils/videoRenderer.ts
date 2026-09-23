@@ -1,4 +1,4 @@
-import { TimedLyricLine, TimedWord, VideoSettings } from '../types';
+import { TimedLyricLine, TimedWord, VideoSettings, VideoClipItem } from '../types';
 
 interface Particle {
   x: number;
@@ -16,6 +16,9 @@ export class VideoRenderer {
   private particles: Particle[] = [];
   private userAvatarImg: HTMLImageElement | null = null;
   private userBgImg: HTMLImageElement | null = null;
+  private videoElements: Map<string, HTMLVideoElement> = new Map();
+  private activeVideoElement: HTMLVideoElement | null = null;
+  private activeVideoUrl: string | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -40,13 +43,67 @@ export class VideoRenderer {
   public setUserBackground(dataUrl: string | null) {
     if (!dataUrl) {
       this.userBgImg = null;
+      if (this.activeVideoElement) {
+        this.activeVideoElement.pause();
+        this.activeVideoElement = null;
+      }
+      this.activeVideoUrl = null;
       return;
     }
+
+    const isVideo = dataUrl.startsWith('data:video') || 
+      dataUrl.includes('.mp4') || 
+      dataUrl.includes('.webm') || 
+      dataUrl.includes('pexels.com/video-files') || 
+      dataUrl.includes('/video/') ||
+      dataUrl.includes('player.vimeo.com');
+
+    if (isVideo) {
+      this.userBgImg = null;
+      this.getOrCreateVideoElement(dataUrl);
+      this.activeVideoUrl = dataUrl;
+      return;
+    }
+
     const img = new Image();
+    img.crossOrigin = 'anonymous';
     img.src = dataUrl;
     img.onload = () => {
       this.userBgImg = img;
+      if (this.activeVideoElement) {
+        this.activeVideoElement.pause();
+        this.activeVideoElement = null;
+      }
+      this.activeVideoUrl = null;
     };
+  }
+
+  private getOrCreateVideoElement(url: string): HTMLVideoElement {
+    let vid = this.videoElements.get(url);
+    if (!vid) {
+      vid = document.createElement('video');
+      vid.crossOrigin = 'anonymous';
+      vid.src = url;
+      vid.muted = true;
+      vid.loop = true;
+      vid.playsInline = true;
+      vid.preload = 'auto';
+      vid.style.display = 'none';
+      this.videoElements.set(url, vid);
+    }
+    this.activeVideoElement = vid;
+    return vid;
+  }
+
+  public destroy() {
+    this.videoElements.forEach((vid) => {
+      vid.pause();
+      vid.src = '';
+      vid.load();
+    });
+    this.videoElements.clear();
+    this.activeVideoElement = null;
+    this.userBgImg = null;
   }
 
   private initParticles(count: number) {
@@ -123,6 +180,56 @@ export class VideoRenderer {
     audioVolume: number
   ) {
     const ctx = this.ctx;
+
+    // A. Check for multi-clip stitching or active video background
+    let currentVideoEl: HTMLVideoElement | null = null;
+
+    if (settings.videoClips && settings.videoClips.length > 0) {
+      // Multi-clip stitching mode:
+      // If 1 clip is 30s and song is 2m30s (150s), the clip is extended / looped to the end.
+      // If multiple clips, each clip gets an even slice or designated slice of total duration.
+      const clips = settings.videoClips;
+      const clipCount = clips.length;
+      if (clipCount === 1) {
+        // Single clip: loop across the entire song duration
+        const clipUrl = clips[0].url;
+        currentVideoEl = this.getOrCreateVideoElement(clipUrl);
+      } else {
+        // Multi-clip sequence: cycle through clips based on timeline
+        const clipDuration = 12; // 12 seconds per clip transition
+        const clipIdx = Math.floor(t / clipDuration) % clipCount;
+        const activeClip = clips[clipIdx];
+        currentVideoEl = this.getOrCreateVideoElement(activeClip.url);
+      }
+    } else if (this.activeVideoElement) {
+      currentVideoEl = this.activeVideoElement;
+    }
+
+    if (currentVideoEl) {
+      try {
+        if (currentVideoEl.paused) {
+          currentVideoEl.play().catch(() => {});
+        }
+        // Sync video frame with currentSec smoothly if video duration is known
+        if (currentVideoEl.duration && !isNaN(currentVideoEl.duration) && currentVideoEl.duration > 0) {
+          const expectedTime = t % currentVideoEl.duration;
+          if (Math.abs(currentVideoEl.currentTime - expectedTime) > 0.5) {
+            currentVideoEl.currentTime = expectedTime;
+          }
+        }
+        ctx.drawImage(currentVideoEl, 0, 0, w, h);
+
+        // Dark vignette overlay for contrast and crisp lyric reading
+        const vig = ctx.createRadialGradient(w / 2, h / 2, h * 0.35, w / 2, h / 2, w * 0.85);
+        vig.addColorStop(0, 'rgba(0, 0, 0, 0.35)');
+        vig.addColorStop(1, 'rgba(0, 0, 0, 0.85)');
+        ctx.fillStyle = vig;
+        ctx.fillRect(0, 0, w, h);
+        return;
+      } catch (e) {
+        // Fallback to static image or procedural background if drawImage fails
+      }
+    }
 
     if (this.userBgImg) {
       ctx.drawImage(this.userBgImg, 0, 0, w, h);
@@ -572,8 +679,23 @@ export class VideoRenderer {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
+    // STYLE 7 CLOUDS (Clean bold rounded centered typography, crisp dark outline, glass backing, active word highlight)
+    if (settings.captionStyle === 'seven_clouds') {
+      this.renderSevenCloudsCaptions(
+        w,
+        centerY,
+        activeLine,
+        currentSec,
+        baseSize,
+        fontFace,
+        textTransform,
+        glowColor,
+        volNorm,
+        settings.showChords
+      );
+    }
     // STYLE 1: GOLDEN WORSHIP (The user's requested style)
-    if (settings.captionStyle === 'golden_worship') {
+    else if (settings.captionStyle === 'golden_worship') {
       this.renderGoldenWorshipCaptions(
         w,
         centerY,
@@ -622,11 +744,12 @@ export class VideoRenderer {
       this.renderKaraokeWipeCaptions(
         w,
         centerY,
-        activeText,
-        lineProgress,
+        activeLine,
+        currentSec,
         baseSize,
         fontFace,
-        glowColor
+        glowColor,
+        settings.showChords
       );
     }
     // STYLE 4: FLUID BOUNCING EMBER / HALO
@@ -843,24 +966,86 @@ export class VideoRenderer {
   }
 
   /**
-   * Karaoke Dual-Color Text Sweep
+   * Karaoke Dual-Color Text Sweep (Small centered block, never scrolling off screen)
    */
   private renderKaraokeWipeCaptions(
     w: number,
     centerY: number,
-    text: string,
-    progress: number,
+    line: TimedLyricLine,
+    currentSec: number,
     fontSize: number,
     fontFace: string,
-    glowColor: string
+    glowColor: string,
+    showChords: boolean = false
   ) {
     const ctx = this.ctx;
-    ctx.font = `800 ${fontSize}px '${fontFace}', sans-serif`;
-    const textWidth = ctx.measureText(text).width;
+    const text = line.line;
+    const lineDuration = Math.max(0.1, line.end - line.start);
+    const progress = Math.max(0, Math.min(1, (currentSec - line.start) / lineDuration));
+
+    // Calculate maximum allowed width to guarantee small centered block (never off screen)
+    const maxAllowedWidth = Math.min(w * 0.82, 800);
+    let effectiveFontSize = fontSize;
+
+    ctx.font = `800 ${effectiveFontSize}px '${fontFace}', -apple-system, sans-serif`;
+    let textWidth = ctx.measureText(text).width;
+
+    if (textWidth > maxAllowedWidth && textWidth > 0) {
+      effectiveFontSize = Math.max(16, Math.round(fontSize * (maxAllowedWidth / textWidth)));
+      ctx.font = `800 ${effectiveFontSize}px '${fontFace}', -apple-system, sans-serif`;
+      textWidth = ctx.measureText(text).width;
+    }
+
     const startX = (w - textWidth) / 2;
 
-    // First draw unsung text (white with subtle shadow)
+    // Optional: Draw centered chord indicator badge above lyrics
+    if (showChords && line.chord) {
+      ctx.save();
+      const chordText = line.chord;
+      ctx.font = `700 ${Math.round(effectiveFontSize * 0.45)}px 'Montserrat', sans-serif`;
+      const chordW = ctx.measureText(chordText).width + 16;
+      const chordH = effectiveFontSize * 0.55;
+      const chordX = w / 2;
+      const chordY = centerY - effectiveFontSize * 0.85;
+
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.28)';
+      ctx.strokeStyle = 'rgba(254, 240, 138, 0.7)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(chordX - chordW / 2, chordY - chordH, chordW, chordH, 6);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#fef08a';
+      ctx.fillText(chordText, chordX, chordY - chordH / 2);
+      ctx.restore();
+    }
+
+    // Centered dark background backing pill for crisp legibility
+    const blockPaddingX = 24;
+    const blockPaddingY = 14;
+    const blockW = textWidth + blockPaddingX * 2;
+    const blockH = effectiveFontSize * 1.6 + blockPaddingY;
+    const blockX = (w - blockW) / 2;
+    const blockY = centerY - blockH / 2;
+
     ctx.save();
+    ctx.fillStyle = 'rgba(10, 15, 29, 0.72)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(blockX, blockY, blockW, blockH, 14);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    // First draw unsung text (soft translucent white)
+    ctx.save();
+    ctx.font = `800 ${effectiveFontSize}px '${fontFace}', -apple-system, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
     ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
     ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
     ctx.shadowBlur = 8;
@@ -870,12 +1055,15 @@ export class VideoRenderer {
     // Clip to progress and draw golden/neon sweep
     ctx.save();
     ctx.beginPath();
-    ctx.rect(startX - 10, centerY - fontSize, textWidth * progress + 10, fontSize * 2);
+    ctx.rect(startX - 10, centerY - effectiveFontSize, textWidth * progress + 10, effectiveFontSize * 2);
     ctx.clip();
 
-    ctx.shadowColor = glowColor;
+    ctx.font = `800 ${effectiveFontSize}px '${fontFace}', -apple-system, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = glowColor || '#f59e0b';
     ctx.shadowBlur = 20;
-    ctx.fillStyle = glowColor;
+    ctx.fillStyle = glowColor || '#f59e0b';
     ctx.fillText(text, w / 2, centerY);
     ctx.restore();
   }
@@ -973,6 +1161,157 @@ export class VideoRenderer {
     ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
     ctx.shadowBlur = 4;
     ctx.fillText(text, w / 2, centerY);
+    ctx.restore();
+  }
+
+  /**
+   * Signature 7 Clouds Lyric Video Style Renderer
+   * Features:
+   * - Ultra-clean, modern, bold sans-serif typography (Montserrat / Plus Jakarta Sans style)
+   * - Crisp dark contrast stroke / multi-layered drop shadow so words pop against any background
+   * - Centered layout with balanced line wrapping
+   * - Active word highlighting with luminous warm white / accent color lift
+   * - Semi-transparent rounded backdrop capsule pill behind active phrase
+   * - Optional inline chords support for musicians
+   */
+  private renderSevenCloudsCaptions(
+    w: number,
+    centerY: number,
+    activeLine: TimedLyricLine,
+    currentSec: number,
+    fontSize: number,
+    fontFace: string,
+    uppercase: boolean,
+    glowColor: string,
+    volNorm: number,
+    showChords: boolean = false
+  ) {
+    const ctx = this.ctx;
+    const words = activeLine.words;
+    if (!words || words.length === 0) return;
+
+    // 7 Clouds style uses bold modern sans (Montserrat or Plus Jakarta Sans preferred)
+    const effectiveFont = (fontFace === 'Cinzel' || fontFace === 'Playfair Display') ? 'Montserrat' : fontFace;
+    let effectiveFontSize = Math.round(fontSize * 1.15);
+
+    ctx.save();
+    ctx.font = `800 ${effectiveFontSize}px '${effectiveFont}', 'Montserrat', 'Plus Jakarta Sans', sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+
+    const maxAllowedWidth = w * 0.88;
+    let spaceWidth = ctx.measureText(' ').width;
+    let wordWidths = words.map((wObj) => {
+      const text = uppercase ? wObj.word.toUpperCase() : wObj.word;
+      return ctx.measureText(text).width;
+    });
+    let totalLineWidth = wordWidths.reduce((a, b) => a + b, 0) + (words.length - 1) * spaceWidth;
+
+    if (totalLineWidth > maxAllowedWidth && totalLineWidth > 0) {
+      const fitRatio = maxAllowedWidth / totalLineWidth;
+      effectiveFontSize = Math.max(18, Math.round(effectiveFontSize * fitRatio));
+      ctx.font = `800 ${effectiveFontSize}px '${effectiveFont}', 'Montserrat', 'Plus Jakarta Sans', sans-serif`;
+      spaceWidth = ctx.measureText(' ').width;
+      wordWidths = words.map((wObj) => {
+        const text = uppercase ? wObj.word.toUpperCase() : wObj.word;
+        return ctx.measureText(text).width;
+      });
+      totalLineWidth = wordWidths.reduce((a, b) => a + b, 0) + (words.length - 1) * spaceWidth;
+    }
+
+    // 1. Draw 7 Clouds signature frosted dark capsule pill backing
+    const pillPaddingX = 28;
+    const pillPaddingY = 16;
+    const pillW = totalLineWidth + pillPaddingX * 2;
+    const pillH = effectiveFontSize * 1.8 + pillPaddingY * 2;
+    const pillX = (w - pillW) / 2;
+    const pillY = centerY - pillH / 2;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+    ctx.shadowBlur = 20;
+    ctx.beginPath();
+    ctx.roundRect(pillX, pillY, pillW, pillH, 24);
+    ctx.fill();
+
+    // Subtle luminous glass border
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+
+    // 2. Render each word with 7 Clouds typography
+    let currentX = (w - totalLineWidth) / 2;
+
+    words.forEach((wObj, idx) => {
+      const text = uppercase ? wObj.word.toUpperCase() : wObj.word;
+      const wWidth = wordWidths[idx];
+      const isCurrent = currentSec >= wObj.start && currentSec <= wObj.end;
+      const isPast = currentSec > wObj.end;
+
+      // Optional musical chord above word
+      if (showChords && (wObj.chord || (idx === 0 && activeLine.chord))) {
+        const chordText = wObj.chord || activeLine.chord || '';
+        ctx.save();
+        ctx.font = `700 ${Math.max(12, Math.round(effectiveFontSize * 0.44))}px 'Plus Jakarta Sans', sans-serif`;
+        ctx.fillStyle = glowColor || '#f59e0b';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = 'rgba(0,0,0,0.9)';
+        ctx.shadowBlur = 4;
+        ctx.fillText(chordText, currentX + wWidth / 2, centerY - effectiveFontSize * 0.95);
+        ctx.restore();
+      }
+
+      ctx.save();
+      if (isCurrent) {
+        // Active Word: Scale up slightly with bright white core & dynamic glow
+        const wordDur = Math.max(0.01, wObj.end - wObj.start);
+        const progress = Math.min(1, Math.max(0, (currentSec - wObj.start) / wordDur));
+        const lift = Math.sin(progress * Math.PI) * -3;
+
+        // Multi-pass dark stroke for maximum readability
+        ctx.lineWidth = 6;
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.95)';
+        ctx.strokeText(text, currentX, centerY + lift);
+
+        // Vibrant colored bloom
+        ctx.shadowColor = glowColor || '#f59e0b';
+        ctx.shadowBlur = 18 + volNorm * 12;
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(text, currentX, centerY + lift);
+
+        // Accent tint
+        ctx.fillStyle = glowColor || '#f59e0b';
+        ctx.globalAlpha = 0.35;
+        ctx.fillText(text, currentX, centerY + lift);
+      } else if (isPast) {
+        // Words already sung: Crisp clear white with deep drop shadow
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
+        ctx.strokeText(text, currentX, centerY);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+        ctx.shadowBlur = 8;
+        ctx.fillText(text, currentX, centerY);
+      } else {
+        // Upcoming words: Clean subtle white/opacity
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+        ctx.strokeText(text, currentX, centerY);
+
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.82)';
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+        ctx.shadowBlur = 6;
+        ctx.fillText(text, currentX, centerY);
+      }
+      ctx.restore();
+
+      currentX += wWidth + spaceWidth;
+    });
+
     ctx.restore();
   }
 
@@ -1255,6 +1594,15 @@ export class VideoRenderer {
     ctx.fillStyle = '#fde047';
     ctx.fillText('♫ CHORDS & LYRICS VIDEO', centerX, pillY + pillH / 2);
 
+    // Typewriter effect for song title: "as if the words are being typed"
+    // Title types out over first 3 seconds, followed by artist over next 2 seconds
+    const typeSpeedTitle = 0.09; // seconds per char
+    const titleCharsCount = Math.min(title.length, Math.floor(t / typeSpeedTitle));
+    const typedTitle = title.substring(0, titleCharsCount);
+    const isTypingTitle = titleCharsCount < title.length;
+    // Blinking cursor
+    const cursor = (Math.floor(t * 3.5) % 2 === 0) ? '|' : '';
+
     // Big Cinematic Song Title
     let fontSize = Math.min(46, Math.max(24, Math.round(w / 18)));
     ctx.font = `800 ${fontSize}px '${settings.fontFamily || "Montserrat"}', sans-serif`;
@@ -1267,20 +1615,27 @@ export class VideoRenderer {
     ctx.shadowColor = 'rgba(245, 158, 11, 0.5)';
     ctx.shadowBlur = 18;
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(title, centerX, centerY + 18);
+    ctx.fillText(typedTitle + (isTypingTitle ? cursor : ''), centerX, centerY + 18);
 
-    // Artist line
+    // Artist line (types after title starts)
     ctx.shadowBlur = 0;
     let artistFontSize = 18;
     ctx.font = `600 ${artistFontSize}px "Plus Jakarta Sans", sans-serif`;
-    const artistText = `by ${artist}`;
-    const artW = ctx.measureText(artistText).width;
+    const artistFullText = `by ${artist}`;
+    const artistDelay = Math.min(2.5, title.length * typeSpeedTitle);
+    const artistCharsCount = t < artistDelay ? 0 : Math.min(artistFullText.length, Math.floor((t - artistDelay) / 0.08));
+    const typedArtist = artistFullText.substring(0, artistCharsCount);
+    const isTypingArtist = !isTypingTitle && artistCharsCount < artistFullText.length && artistCharsCount > 0;
+
+    const artW = ctx.measureText(artistFullText).width;
     if (artW > maxTitleW && artW > 0) {
       artistFontSize = Math.max(13, Math.round(artistFontSize * (maxTitleW / artW)));
       ctx.font = `600 ${artistFontSize}px "Plus Jakarta Sans", sans-serif`;
     }
     ctx.fillStyle = 'rgba(241, 245, 249, 0.85)';
-    ctx.fillText(artistText, centerX, centerY + 58);
+    if (typedArtist) {
+      ctx.fillText(typedArtist + (isTypingArtist ? cursor : ''), centerX, centerY + 58);
+    }
 
     // Countdown / Progress bar until lyrics
     const progress = Math.min(1, Math.max(0, t / Math.max(0.1, firstLineStart)));

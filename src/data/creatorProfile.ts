@@ -55,7 +55,7 @@ In the mighty name of Jesus Christ I pray, Amen."`,
     },
     {
       platform: 'YouTube Music',
-      url: 'https://music.youtube.com/channel/@JamesUsseryMusic',
+      url: 'https://music.youtube.com/playlist?list=OLAK5uy_lCJDu9FGk_OZCkHzn5PpUAZBfpz9nICF4',
     },
     {
       platform: 'SoundCloud',
@@ -121,76 +121,146 @@ In the mighty name of Jesus Christ I pray, Amen."`,
   ],
 };
 
+export type SongThemeType = 'gospel_worship' | 'love_heartbreak' | 'pearls_storytelling';
+
 /**
  * Builds a ready-to-paste master YouTube / Social description for James Ussery
- * exactly matching his signature "Breathing Again" structure and voice.
+ * exactly matching his official "Pearls" and "Breathing Again" structure, story,
+ * 8 streaming platforms, salvation prayer, community requests, and viral tags.
  */
 export function buildJamesUsseryDescription(
-  songTitle: string = 'Breathing Again',
-  customTestimony?: string
+  songTitle: string = 'Pearls',
+  songType: SongThemeType = 'pearls_storytelling',
+  customStory?: string
 ): string {
   const p = JAMES_USSERY_PROFILE;
 
   const linksBlock = p.streamingLinks
-    .map((item) => `🎵 ${item.platform.padEnd(14, ' ')}: ${item.url}`)
-    .join('\n');
+    .map((item) => `${item.platform.padEnd(14, ' ')}\n${item.url}`)
+    .join('\n\n');
 
-  const defaultTestimony =
-    customTestimony ||
-    `This video symbolizes the battle, the struggle, and the moment God restores your breath after the storm. It represents spiritual awakening, rebirth, and the journey of finding peace and redemption through Jesus Christ. As a Christian warrior, I’ve walked through seasons of doubt and darkness, but through prayer, worship, and the presence of God, I found my way back to spiritual renewal.
+  let storyParagraphs = '';
 
-“${songTitle}” is a testimony of faith revival — a reminder that Jesus is Lord, that He meets us in the chaos, and that His strength carries us when ours fades. The cinematic worship atmosphere and heartfelt prayer create a powerful space for meditation, reflection, and spiritual rebirth. Whether you need peaceful music to study, ambient worship to focus, or simply a moment to breathe, this video is for you.
+  if (customStory) {
+    storyParagraphs = customStory;
+  } else if (songType === 'love_heartbreak') {
+    storyParagraphs = `"${songTitle}" is an emotional journey through love, heartbreak, vulnerability, and healing. It speaks directly to anyone who has loved deeply, walked through the pain of goodbye, and struggled to pick up the pieces. This song captures the raw honesty of letting go, the quiet ache of missing someone, and finding the inner strength and faith to love again.
 
-Sit back, take a deep breath, and let the worship, the prayer, and the relaxing soundscape guide you closer to Jesus. Through the Bible and prayer, we find our way back to God. May this video be a testament to the power of faith and worship music to restore the soul.`;
+With heartfelt country storytelling, soulful melodies, and deep emotional resonance, "${songTitle}" reminds you that heartbreak is not the end of your story — it’s the soil where God grows deeper empathy, wisdom, and healing. If you’ve ever felt brokenhearted, unseen, or torn apart, this song is here to remind you that you are never truly alone.
 
-  // Dynamic hashtags incorporating the specific song title
+Sit back, relax, and let the music speak — let every lyric wrap around your heart and remind you that there is grace and purpose even in heartbreak.`;
+  } else if (songTitle.toLowerCase().includes('pearl') || songType === 'pearls_storytelling') {
+    storyParagraphs = `"${songTitle}" is a powerful crossover moment — a blend of rap, country, pop, and gospel built around the idea that God places value in you even when life tries to convince you otherwise. This song is about discovering the pearls inside your pain, the beauty inside your battles, and the strength God has been shaping in you the whole time. It’s emotional, honest, and full of truth — the kind of message that reminds you that God doesn’t just pull you out, He transforms you.
+
+With its mix of heartfelt country melodies, uplifting gospel energy, catchy pop hooks, and raw rap storytelling, "${songTitle}" speaks to anyone who’s ever felt overlooked, broken, or underestimated. This video captures the journey from pressure to purpose, from hurt to healing, and from feeling small to realizing God has placed priceless worth inside you.
+
+If you’re looking for a song that blends genres while delivering a message of hope, identity, and breakthrough, this moment is for you. Sit back, relax, and let the music speak — let the lyrics remind you that God is shaping pearls inside every storm you’ve survived.`;
+  } else {
+    storyParagraphs = `"${songTitle}" is a testimony of faith revival — a reminder that Jesus is Lord, that He meets us in the chaos, and that His strength carries us when ours fades. This song symbolizes the battle, the struggle, and the moment God restores your breath after the storm. It represents spiritual awakening, rebirth, and the journey of finding peace and redemption through Jesus Christ.
+
+As a Christian warrior and storyteller, I make music to remind you that God never leaves your side. Whether you need peaceful worship to study, ambient music to focus, or simply a moment to breathe and remember God's promises, this video is for you.
+
+Sit back, take a deep breath, and let the music, the prayer, and the relaxing soundscape guide you closer to Jesus. May this song be a testament to the power of faith and music to restore the soul.`;
+  }
+
+  // Dynamic tags
   const cleanSongTag = `#${songTitle.replace(/[^a-zA-Z0-9]/g, '')}`;
   const hashtags = [
+    cleanSongTag,
     '#JamesUssery',
     '#JamesUsseryMusic',
-    cleanSongTag,
-    '#CountryGospel',
+    '#GospelRap',
+    '#CountryPop',
     '#ChristianMusic',
-    '#AcousticWorship',
-    '#ChristianIndie',
-    '#EpicGospel',
-    '#JesusChrist',
-    '#FaithRevival',
-    '#WorshipMusic',
-    '#PrayerOfSalvation',
-    '#ChristianWarrior',
-    '#CinematicWorship',
-    '#JesusSaves',
     '#PraiseAndWorship',
-    '#GodIsGood',
-    '#Salvation',
+    '#FaithJourney',
+    '#RapForJesus',
+    '#NewMusic2026',
+    '#TestimonySong',
+    '#BreakthroughMusic',
+    '#JesusMusic',
+    '#NewMusicFriday',
+    '#NewMusic',
+    '#MusicVideo',
+    '#OfficialMusicVideo',
+    '#PopMusic',
+    '#GospelMusic',
+    '#CountryMusic',
+    '#RapMusic',
+    '#IndieArtist',
+    '#IndependentArtist',
+    '#UnsignedArtist',
+    '#GeorgiaArtist',
+    '#TrendingNow',
+    '#ViralMusic',
+    '#ViralVideo',
+    '#EmotionalMusic',
+    '#StorytellingMusic',
+    '#SunoAI',
+    '#AIArtist',
+    '#AIProduced',
+    '#OriginalSong',
+    '#SongwriterLife',
+    '#MusicDiscovery',
+    '#MustWatch',
+    '#YouTubeMusic',
+    '#MusicPromotion',
+    '#FreshRelease',
+    '#NewRelease',
+    '#ListenNow',
+    '#WatchNow',
+    '#SupportIndieMusic',
+    '#SupportIndependentArtists',
+    '#HitSong',
+    '#HeartfeltMusic',
+    '#BreakoutArtist',
+    '#ArtistOnTheRise',
+    '#CreatorsUnite',
+    '#OnRepeat',
+    '#MusicLovers',
+    '#ViralHits',
+    '#FYP',
+    '#ForYou',
+    '#ForYouPage',
+    '#ExplorePage',
+    '#AlgorithmBoost'
   ];
 
   return `🎵 ${songTitle} — ${p.name} (${p.handle})
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${p.missionStatement}
 
-${defaultTestimony}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Welcome to the official music and ministry channel of James Ussery (@JamesUsseryMusic).
+I make gospel music, country music, rap, pop, and heartfelt storytelling to lift your spirit and speak directly to real‑life moments.
+
+${storyParagraphs}
+
+Thank you for supporting my music and my journey as an independent artist.
+Drop a comment if “${songTitle}” spoke to your heart.
 
 🎧 STREAM & LISTEN TO JAMES USSERY:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${linksBlock}
 
-🕊️ THE PRAYER OF SALVATION (AN INVITATION TO JESUS):
+🕊️ THE PRAYER OF SALVATION (AN INVITATION TO JESUS)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${p.salvationPrayerScripture}
+"If you declare with your mouth, ‘Jesus is Lord,’ and believe in your heart that God raised Him from the dead, you will be saved." — Romans 10:9
 
-${p.salvationPrayerText}
+"Dear Heavenly Father,
+I come to You today acknowledging that I need a Savior. I confess that I have sinned and fallen short of Your glory, but I believe that Jesus Christ is the Son of God. I believe He died on the cross for my sins and rose again from the grave on the third day.
 
-${p.salvationPrayerNextSteps}
+Lord Jesus, I surrender my life to You today. Forgive me of all my sins, cleanse my heart, and fill me with Your Holy Spirit. I accept You as my Lord, my Savior, and my Guide. Help me to live for You all the days of my life.
 
-💬 COMMUNITY & SONG REQUESTS:
+In the mighty name of Jesus Christ I pray, Amen."
+
+💬 COMMUNITY & SONG REQUESTS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-• Subscribe to the channel: https://youtube.com/@JamesUsseryMusic?sub_confirmation=1  
-• Like, Share & Drop a comment if “${songTitle}” blessed your soul today!  
-• If you have any song requests or chord transcription requests, let me know in the comments.
+• Subscribe: https://youtube.com/@JamesUsseryMusic?sub_confirmation=1  
+• Like, Share & Drop a comment if “${songTitle}” blessed your soul.  
+• Tell me your favorite lyric — I read every one.  
+• Drop any song requests or chord transcription needs.
 
-🏷️ HASHTAGS:
+🏷️ HASHTAGS
 ${hashtags.join(' ')}
 
 © 2026 James Ussery. All rights reserved.`;

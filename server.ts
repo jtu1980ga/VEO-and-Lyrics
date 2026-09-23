@@ -11,22 +11,26 @@ const PORT = 3000;
 
 app.use(express.json({ limit: "25mb" }));
 
-// Lazy Gemini client helper
+// Lazy Gemini client helper (supports server env or user-provided BYOK)
 let aiClient: GoogleGenAI | null = null;
-function getAIClient(): GoogleGenAI | null {
-  const apiKey = process.env.GEMINI_API_KEY;
+function getAIClient(overrideKey?: string): GoogleGenAI | null {
+  const apiKey = overrideKey || process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
-  if (!aiClient) {
-    aiClient = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          "User-Agent": "aistudio-build",
-        },
-      },
-    });
+  if (!overrideKey && aiClient) {
+    return aiClient;
   }
-  return aiClient;
+  const client = new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        "User-Agent": "aistudio-build",
+      },
+    },
+  });
+  if (!overrideKey) {
+    aiClient = client;
+  }
+  return client;
 }
 
 // Health check
@@ -130,26 +134,86 @@ app.get("/api/pexels/search", async (req, res) => {
   }
 });
 
-// Whisper Groq API: Transcribe audio to timestamped lyrics (with fallback alignment)
+// Whisper / Audio AI Transcription: Listen to uploaded song, prefill lyrics, and generate timestamped output
 app.post("/api/whisper/transcribe", async (req, res) => {
   try {
-    const { referenceLyrics, durationSec = 32 } = req.body;
-    const groqKey = process.env.GROQ_API_KEY;
+    const { referenceLyrics, durationSec = 32, audioBase64, mimeType = "audio/mp3" } = req.body;
+    const customGroqKey = req.headers['x-groq-api-key'] ? String(req.headers['x-groq-api-key']).trim() : '';
+    const customGeminiKey = req.headers['x-gemini-api-key'] ? String(req.headers['x-gemini-api-key']).trim() : '';
+    const groqKey = customGroqKey || process.env.GROQ_API_KEY;
 
-    // Note: If GROQ_API_KEY is configured and user provides audio file,
-    // we can invoke Groq's whisper-large-v3 model for word-level timestamps.
-    // If not configured, we use Gemini or the intelligent acoustic timing model.
-    if (groqKey) {
+    const ai = getAIClient(customGeminiKey);
+
+    // If audio is uploaded, AI listens directly to the audio to extract and align lyrics
+    if (audioBase64 && ai) {
       try {
-        // Example schema if called with audio base64 or reference
-        // We also provide automatic timestamp alignment
-      } catch (gErr) {
-        console.warn("Groq transcription warning:", gErr);
+        const cleanBase64 = audioBase64.includes("base64,") ? audioBase64.split("base64,")[1] : audioBase64;
+        const prompt = referenceLyrics && referenceLyrics.trim()
+          ? `Listen to this song audio and synchronize these provided lyrics with exact timestamps and chords:
+"""
+${referenceLyrics}
+"""
+Song duration is ~${durationSec} seconds. Produce word-level and line-level timestamps for every word sung.
+Output valid JSON array matching this format:
+[
+  {
+    "line": "I drove past that old dirt road",
+    "start": 0.0,
+    "end": 3.8,
+    "chord": "Em7",
+    "words": [
+      { "word": "I", "start": 0.0, "end": 0.3 },
+      { "word": "drove", "start": 0.3, "end": 0.8 },
+      { "word": "past", "start": 0.8, "end": 1.2 }
+    ]
+  }
+]`
+          : `Listen to this uploaded song audio carefully. Transcribe all lyrics sung in the song, determine musical chords for each line, and provide precise line-level and word-level timestamps.
+Song duration is ~${durationSec} seconds.
+Output valid JSON array matching this format:
+[
+  {
+    "line": "Lyrics line here",
+    "start": 0.0,
+    "end": 3.8,
+    "chord": "G",
+    "words": [
+      { "word": "Lyrics", "start": 0.0, "end": 0.5 },
+      { "word": "line", "start": 0.5, "end": 1.0 }
+    ]
+  }
+]`;
+
+        const response = await ai.models.generateContent({
+          model: "gemini-3.8-flash",
+          contents: [
+            {
+              inlineData: {
+                mimeType: mimeType || "audio/mp3",
+                data: cleanBase64,
+              },
+            },
+            { text: prompt },
+          ],
+          config: { responseMimeType: "application/json" },
+        });
+
+        const aligned = JSON.parse(response.text || "[]");
+        if (aligned.length > 0) {
+          const plainLyrics = aligned.map((l: any) => l.line).join("\n");
+          return res.json({
+            aligned,
+            plainLyrics,
+            source: "gemini_multimodal_audio",
+            keyConfigured: true,
+          });
+        }
+      } catch (audioErr) {
+        console.warn("Gemini direct audio listening notice (using text alignment):", audioErr);
       }
     }
 
-    // Auto-align with chords and word-level timestamps
-    const ai = getAIClient();
+    // Auto-align with chords and word-level timestamps from reference text
     const lyricsToAlign = referenceLyrics || `Step one, you say we need to talk
 He walks, you say sit down, it's just a talk
 He smiles politely back at you
@@ -200,8 +264,10 @@ Return valid JSON only.`;
 
         const aligned = JSON.parse(response.text || "[]");
         if (aligned.length > 0) {
+          const plainLyrics = aligned.map((l: any) => l.line).join("\n");
           return res.json({
             aligned,
+            plainLyrics,
             source: groqKey ? "groq_whisper_enhanced" : "gemini_transcription",
             groqKeyConfigured: Boolean(groqKey),
           });
@@ -213,8 +279,10 @@ Return valid JSON only.`;
 
     // Default fallback alignment with chords
     const fallbackWithChords = fallbackAlignWithChords(lyricsToAlign, durationSec);
+    const plainLyrics = fallbackWithChords.map((l: any) => l.line).join("\n");
     return res.json({
       aligned: fallbackWithChords,
+      plainLyrics,
       source: "algorithmic_chords",
       groqKeyConfigured: Boolean(groqKey),
     });
@@ -1342,7 +1410,8 @@ Return STRICT JSON in this structure:
 app.post("/api/studio/ai-director-chat", async (req, res) => {
   try {
     const { userMessage, currentSettings = {}, lyricsLines = [] } = req.body;
-    const ai = getAIClient();
+    const customGeminiKey = req.headers['x-gemini-api-key'] ? String(req.headers['x-gemini-api-key']).trim() : '';
+    const ai = getAIClient(customGeminiKey);
 
     if (!userMessage) {
       return res.status(400).json({ error: "Missing userMessage" });
@@ -1563,6 +1632,158 @@ Return a STRICT JSON object:
   } catch (err: any) {
     console.error("AI Director chat failure:", err);
     return res.status(500).json({ error: err.message || "Failed to process director instruction" });
+  }
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Social Media Keyword & SEO Multi-Platform Generator (TikTok, IG, FB, YouTube)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+app.post("/api/social/generate-keywords", async (req, res) => {
+  try {
+    const {
+      songTitle = "Breathing Again",
+      artistName = "James Ussery",
+      genre = "Country Gospel & Acoustic Worship",
+      theme = "Christian Faith, Overcoming struggles, Hope in Jesus",
+      customInfo = "",
+    } = req.body;
+
+    const customGeminiKey = req.headers['x-gemini-api-key'] ? String(req.headers['x-gemini-api-key']).trim() : '';
+    const ai = getAIClient(customGeminiKey);
+
+    if (!ai) {
+      return res.json({
+        youtube: {
+          title: `${songTitle} - ${artistName} (Official Lyric Video)`,
+          tags: ["James Ussery", "Breathing Again", "Worship Music", "Christian Indie", "Gospel", "Jesus Christ", "Prayer of Salvation"],
+          hashtags: ["#JamesUssery", "#BreathingAgain", "#ChristianMusic", "#WorshipMusic", "#JesusSaves"],
+          tips: "Include link in description, pin comment with salvation prayer, and use high-contrast thumbnail.",
+        },
+        tiktok: {
+          caption: `When you need a reminder that God isn't done with you yet. 🙏 Song: ${songTitle} by ${artistName}`,
+          hashtags: ["#christian", "#christiantiktok", "#faith", "#jesus", "#worship", "#gospelmusic", "#jamesussery"],
+          soundTitle: `${artistName} - ${songTitle} (Original Sound)`,
+          trendingHooks: ["Stop scrolling if you need hope today...", "God told me someone needed to hear this song today."],
+        },
+        instagram: {
+          caption: `Surrender every storm to Jesus. '${songTitle}' is streaming everywhere now.\n\nDrop a ❤️ or 🙏 if this blessed your spirit today!`,
+          hashtags: ["#christianreels", "#christianmusic", "#worshipmusic", "#faithjourney", "#jesusiscalling", "#christianindie", "#jamesussery"],
+          reelsAudioStrategy: "Add as original audio and save to Audio page for community remixing.",
+        },
+        facebook: {
+          post: `God restores your breath after the storm. Listen to '${songTitle}' by ${artistName} and remember you are never alone. Share this with a friend or family member who needs hope and salvation today.`,
+          hashtags: ["#ChristianFaith", "#GospelMusic", "#JesusChrist", "#PrayerOfSalvation"],
+        },
+        source: "fallback",
+      });
+    }
+
+    const prompt = `You are a world-class social media strategist and music marketing expert specializing in viral video growth, SEO keywords, and engagement for Christian worship artists, gospel music, and inspirational creators.
+
+Artist: "${artistName}"
+Song / Project Title: "${songTitle}"
+Genre: "${genre}"
+Core Theme & Message: "${theme}"
+Additional Artist Info / Testimonial: "${customInfo}"
+
+Generate an ultra-comprehensive, high-ranking social media strategy and keywords breakdown for:
+1. YouTube (SEO Title options, top 25 high-search ranking tags, strategic hashtags, description recommendations)
+2. TikTok (Viral hook lines, short captions under 150 chars, top 15 trending Christian / music hashtags, sound strategy)
+3. Instagram Reels & Feed (Aesthetic devotional captions, top 20 hashtags categorized by reach, engagement CTA)
+4. Facebook (Heartfelt story/testimony post copy, high-share viral hooks, hashtags, group sharing tips)
+5. General Search Keywords (Master comma-separated list of 30+ keywords for metadata tags)
+
+Return STRICT JSON matching:
+{
+  "youtube": {
+    "recommendedTitles": ["string"],
+    "tags": ["string"],
+    "hashtags": ["string"],
+    "descriptionStrategy": "string"
+  },
+  "tiktok": {
+    "captions": ["string"],
+    "trendingHooks": ["string"],
+    "hashtags": ["string"],
+    "soundStrategy": "string"
+  },
+  "instagram": {
+    "captions": ["string"],
+    "hashtags": ["string"],
+    "engagementCallToAction": "string"
+  },
+  "facebook": {
+    "postTemplates": ["string"],
+    "hashtags": ["string"],
+    "communitySharingTips": "string"
+  },
+  "masterKeywords": ["string"]
+}`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.8-flash",
+      contents: prompt,
+      config: { responseMimeType: "application/json" },
+    });
+
+    const parsed = JSON.parse(response.text || "{}");
+    return res.json({ ...parsed, source: "gemini" });
+  } catch (err: any) {
+    console.error("Social keywords generator error:", err);
+    return res.status(500).json({ error: err.message || "Failed to generate social keywords" });
+  }
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// General Gemini Chatbot: Edit App, Music, Lyric Videos, Marketing & Ministry
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+app.post("/api/ai/chat", async (req, res) => {
+  try {
+    const { messages = [], context = {} } = req.body;
+    const customGeminiKey = req.headers['x-gemini-api-key'] ? String(req.headers['x-gemini-api-key']).trim() : '';
+    const ai = getAIClient(customGeminiKey);
+
+    if (!messages || messages.length === 0) {
+      return res.status(400).json({ error: "Missing chat messages" });
+    }
+
+    if (!ai) {
+      const lastMsg = messages[messages.length - 1]?.content || "";
+      return res.json({
+        reply: `I received your message: "${lastMsg}". To activate real-time Gemini intelligence, configure your GEMINI_API_KEY in Account Settings. Meanwhile, your video tools, OCR chords, Whisper alignment, and YouTube description generators are fully active!`,
+        source: "fallback",
+      });
+    }
+
+    // Build chat history
+    const systemInstruction = `You are the executive AI Creative Director & Technical Assistant for VeoStudio and music creator James Ussery (@JamesUsseryMusic).
+Your mission is to help the creator with:
+1. Editing their music, lyrics, chords, and lyric videos.
+2. Editing and customizing application settings, styling, fonts, and video layouts.
+3. Social media strategy, high-ranking search keywords for TikTok, Instagram, Facebook, and YouTube.
+4. YouTube descriptions (including James Ussery's signature salvation prayer, streaming links, and testimony format).
+5. Gospel songwriting, chord progressions, and viral content ideas.
+
+Always be encouraging, insightful, highly technical when asked about video/code/settings, and aligned with Christian gospel ministry values. Speak directly and provide actionable, ready-to-copy outputs.`;
+
+    const chatContents = messages.map((m: any) => ({
+      role: m.role === 'user' ? 'user' : 'model',
+      parts: [{ text: m.content || "" }],
+    }));
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.8-flash",
+      contents: chatContents,
+      config: {
+        systemInstruction,
+      },
+    });
+
+    const reply = response.text || "I'm here to help you refine your music, videos, and social strategy!";
+    return res.json({ reply, source: "gemini" });
+  } catch (err: any) {
+    console.error("General AI Chat error:", err);
+    return res.status(500).json({ error: err.message || "Failed to generate AI chat response" });
   }
 });
 

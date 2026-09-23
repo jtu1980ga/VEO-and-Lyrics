@@ -21,9 +21,10 @@ import {
   Heart,
   Share2
 } from 'lucide-react';
-import { VideoSettings, TimedLyricLine } from '../types';
+import { VideoSettings, TimedLyricLine, VideoClipItem } from '../types';
 import { parseFormattedLrcWithChords, formatLinesToLrcWithChords } from '../utils/chordLrcParser';
 import { JAMES_USSERY_PROFILE, buildJamesUsseryDescription } from '../data/creatorProfile';
+import { PexelsAssetSelector } from './PexelsAssetSelector';
 
 interface ChordLyricStudioPipelineProps {
   onBack: () => void;
@@ -243,11 +244,14 @@ export const ChordLyricStudioPipeline: React.FC<ChordLyricStudioPipelineProps> =
   // Copy / Download Feedback
   const [copied, setCopied] = useState<boolean>(false);
 
-  // Styling
+  // Styling & Video Stitching
   const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16'>('16:9');
   const [bgImageUrl, setBgImageUrl] = useState<string | null>(
     'https://images.unsplash.com/photo-1518495973542-4542c06a5843?auto=format&fit=crop&w=1920&q=80'
   );
+  const [selectedVideoClips, setSelectedVideoClips] = useState<VideoClipItem[]>([]);
+  const [audioBase64, setAudioBase64] = useState<string | null>(null);
+  const [isAiListeningAudio, setIsAiListeningAudio] = useState<boolean>(false);
 
   // Handle Audio Upload
   const handleAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -265,6 +269,13 @@ export const ChordLyricStudioPipeline: React.FC<ChordLyricStudioPipelineProps> =
           setAudioDurationSec(Math.round(audio.duration));
         }
       };
+
+      // Convert to base64 for AI direct listening if needed
+      const reader = new FileReader();
+      reader.onload = () => {
+        setAudioBase64(reader.result as string);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -282,18 +293,52 @@ export const ChordLyricStudioPipeline: React.FC<ChordLyricStudioPipelineProps> =
     }
   };
 
+  // AI listens to uploaded song audio and pre-fills lyrics
+  const handleAiListenSong = async () => {
+    setIsAiListeningAudio(true);
+    try {
+      const res = await fetch('/api/whisper/transcribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          audioBase64: audioBase64 || undefined,
+          durationSec: audioDurationSec || 160,
+          referenceLyrics: normalLyrics.trim() || undefined,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.plainLyrics) {
+          setNormalLyrics(data.plainLyrics);
+        }
+        if (data.aligned && data.aligned.length > 0) {
+          const lines: TimedLyricLine[] = data.aligned;
+          const formatted = formatLinesToLrcWithChords(lines);
+          const cleanTimed = formatted.replace(/\([^)]+\)/g, '');
+          setTimestampedLyrics(cleanTimed || SAMPLE_TIMED_OUTPUT);
+        }
+      }
+    } catch (err) {
+      console.error('Audio listen error:', err);
+    } finally {
+      setIsAiListeningAudio(false);
+    }
+  };
+
   // Send to Whisper to get timestamped lyrics
   const handleSendToWhisper = async () => {
     if (!normalLyrics.trim()) return;
     setIsWhisperProcessing(true);
 
     try {
-      const res = await fetch('/api/director/align', {
+      const res = await fetch('/api/whisper/transcribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          lyrics: normalLyrics,
-          songDuration: audioDurationSec || 160,
+          referenceLyrics: normalLyrics,
+          audioBase64: audioBase64 || undefined,
+          durationSec: audioDurationSec || 160,
         }),
       });
 
@@ -443,6 +488,7 @@ export const ChordLyricStudioPipeline: React.FC<ChordLyricStudioPipelineProps> =
       outroDurationSec,
       showIntroScreen: true,
       showOutroScreen: includeThankYouScreen,
+      videoClips: selectedVideoClips.length > 0 ? selectedVideoClips : undefined,
       cta: {
         enabled: true,
         text: `Watch Chords & Lyrics for "${songTitle}"`,
@@ -698,14 +744,36 @@ export const ChordLyricStudioPipeline: React.FC<ChordLyricStudioPipelineProps> =
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-gray-300 mb-1.5">
-              Paste normal plain lyrics here (without timestamps or chords):
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold text-gray-300">
+                Paste normal plain lyrics here (without timestamps or chords):
+              </label>
+              {audioFile && (
+                <button
+                  type="button"
+                  disabled={isAiListeningAudio}
+                  onClick={handleAiListenSong}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-sky-500/20 text-sky-300 hover:bg-sky-500/30 border border-sky-500/40 transition cursor-pointer disabled:opacity-50"
+                >
+                  {isAiListeningAudio ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>AI Listening to Song & Transcribing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 className="w-3.5 h-3.5" />
+                      <span>AI Listen to Uploaded Song & Prefill Lyrics</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
             <textarea
               rows={6}
               value={normalLyrics}
               onChange={(e) => setNormalLyrics(e.target.value)}
-              placeholder="Paste plain lyrics here..."
+              placeholder="Paste plain lyrics here, or click 'AI Listen to Uploaded Song' to transcribe automatically..."
               className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3.5 text-xs font-mono text-gray-200 leading-relaxed focus:outline-none focus:border-indigo-500 transition"
             />
           </div>
@@ -715,7 +783,7 @@ export const ChordLyricStudioPipeline: React.FC<ChordLyricStudioPipelineProps> =
             type="button"
             disabled={isWhisperProcessing || !normalLyrics.trim()}
             onClick={handleSendToWhisper}
-            className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 disabled:opacity-50 text-white font-bold text-xs sm:text-sm py-3 px-4 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
+            className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 disabled:opacity-50 text-white font-bold text-xs sm:text-sm py-3 px-4 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 cursor-pointer"
           >
             {isWhisperProcessing ? (
               <>
@@ -725,7 +793,7 @@ export const ChordLyricStudioPipeline: React.FC<ChordLyricStudioPipelineProps> =
             ) : (
               <>
                 <Wand2 className="w-4 h-4" />
-                <span>Send to Whisper to Get Timestamped Lyrics</span>
+                <span>Send Lyrics to Whisper with Key for Timestamped Lyrics</span>
               </>
             )}
           </button>
@@ -1042,6 +1110,76 @@ export const ChordLyricStudioPipeline: React.FC<ChordLyricStudioPipelineProps> =
               className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-[11px] font-mono text-gray-300 focus:outline-none focus:border-amber-500 leading-relaxed"
             />
           </div>
+        </div>
+
+        {/* ════════════════════════════════════════════════════════════════
+            BLOCK 6: Pexels Video Search, Selection & Multi-Clip Stitching
+        ════════════════════════════════════════════════════════════════ */}
+        <div className="space-y-4">
+          <PexelsAssetSelector
+            selectedUrl={bgImageUrl}
+            onSelectAsset={(url, type, title) => {
+              setBgImageUrl(url);
+              if (type === 'video') {
+                const newClip: VideoClipItem = {
+                  id: String(Date.now()),
+                  url,
+                  previewUrl: url,
+                  title,
+                  durationSec: 30,
+                };
+                setSelectedVideoClips((prev) => {
+                  const exists = prev.some((c) => c.url === url);
+                  if (exists) return prev;
+                  return [...prev, newClip];
+                });
+              }
+            }}
+          />
+
+          {/* Stitched Clips Track Indicator */}
+          {selectedVideoClips.length > 0 && (
+            <div className="bg-gray-900/80 border border-emerald-500/30 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-emerald-400 flex items-center gap-2">
+                  <Video className="w-4 h-4" />
+                  <span>Stitched Video Clips Sequence ({selectedVideoClips.length} clips selected)</span>
+                </span>
+                <span className="text-[11px] text-gray-400">
+                  Audio: {Math.floor(audioDurationSec / 60)}m {audioDurationSec % 60}s ({audioDurationSec}s)
+                </span>
+              </div>
+
+              <p className="text-[11px] text-gray-300">
+                {selectedVideoClips.length === 1
+                  ? `Single video clip (30s) selected: It will automatically be extended and seamlessly looped to cover the full duration of your audio (${audioDurationSec}s).`
+                  : `Multiple video clips selected (${selectedVideoClips.length}): Seamlessly stitched together into a complete sequence across your song.`}
+              </p>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {selectedVideoClips.map((clip, idx) => (
+                  <div
+                    key={clip.id}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gray-950 border border-gray-800 text-xs font-medium text-gray-200"
+                  >
+                    <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-[10px] font-bold">
+                      {idx + 1}
+                    </span>
+                    <span className="max-w-[140px] truncate">{clip.title || `Clip #${idx + 1}`}</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelectedVideoClips((prev) => prev.filter((_, i) => i !== idx))
+                      }
+                      className="text-gray-500 hover:text-rose-400 text-sm ml-1 font-bold"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ════════════════════════════════════════════════════════════════
